@@ -14,7 +14,7 @@ type ParallelChunkedFlow struct {
 	availableChunks chan *Chunk
 	currentChunk    *Chunk
 
-	handler func(interface{}) interface{}
+	handler func(interface{}, chan interface{})
 }
 
 // NewParallelChunckedFlow creates a new parallel chunked flow

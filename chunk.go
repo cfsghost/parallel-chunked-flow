@@ -10,7 +10,7 @@ type Chunk struct {
 	output     chan interface{}
 	counter    uint64
 	bufferSize int
-	Handler    func(interface{}) interface{}
+	Handler    func(interface{}, chan interface{})
 }
 
 func NewChunk(size int) *Chunk {
@@ -39,13 +39,7 @@ func (chunk *Chunk) receiver() {
 }
 
 func (chunk *Chunk) handle(data interface{}) {
-
-	result := chunk.Handler(data)
-	if result == nil {
-		return
-	}
-
-	chunk.output <- result
+	chunk.Handler(data, chunk.output)
 }
 
 func (chunk *Chunk) push(data interface{}) bool {

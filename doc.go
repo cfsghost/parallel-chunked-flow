@@ -6,8 +6,8 @@ Here is example to create a flow:
 			BufferSize: 1024000,
 			ChunkSize:  1024,
 			ChunkCount: 128,
-			Handler: func(data interface{}) interface{} {
-				return data.(int) + 1
+			Handler: func(data interface{}, output chan interface{}) {
+				output <- data.(int) + 1
 			},
 	}
 
