@@ -8,6 +8,7 @@ type Chunk struct {
 	id         int
 	incoming   chan interface{}
 	output     chan interface{}
+	closed     chan struct{}
 	counter    uint64
 	bufferSize int
 	Handler    func(interface{}, chan interface{})
@@ -18,12 +19,17 @@ func NewChunk(size int) *Chunk {
 		bufferSize: size,
 		incoming:   make(chan interface{}, size),
 		output:     make(chan interface{}, size),
+		closed:     make(chan struct{}),
 		counter:    0,
 	}
 }
 
 func (chunk *Chunk) Initialize() {
 	go chunk.receiver()
+}
+
+func (chunk *Chunk) close() {
+	chunk.closed <- struct{}{}
 }
 
 func (chunk *Chunk) receiver() {
@@ -34,6 +40,8 @@ func (chunk *Chunk) receiver() {
 
 			// Process data from queue of chunk
 			chunk.handle(data)
+		case <-chunk.closed:
+			return
 		}
 	}
 }

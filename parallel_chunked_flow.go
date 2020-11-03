@@ -5,11 +5,13 @@ import (
 )
 
 type ParallelChunkedFlow struct {
-	incoming  chan interface{}
-	output    chan interface{}
-	chunkSize int
-	chunks    *ring.Ring
-	cursor    *ring.Ring
+	closedDataReceiver chan struct{}
+	closedDataExporter chan struct{}
+	incoming           chan interface{}
+	output             chan interface{}
+	chunkSize          int
+	chunks             *ring.Ring
+	cursor             *ring.Ring
 
 	availableChunks chan *Chunk
 	currentChunk    *Chunk
@@ -21,12 +23,14 @@ type ParallelChunkedFlow struct {
 func NewParallelChunkedFlow(options *Options) *ParallelChunkedFlow {
 
 	pcf := &ParallelChunkedFlow{
-		incoming:        make(chan interface{}, options.BufferSize),
-		output:          make(chan interface{}, options.BufferSize),
-		chunkSize:       options.ChunkSize,
-		chunks:          ring.New(options.ChunkCount),
-		availableChunks: make(chan *Chunk, options.ChunkCount),
-		handler:         options.Handler,
+		closedDataReceiver: make(chan struct{}),
+		closedDataExporter: make(chan struct{}),
+		incoming:           make(chan interface{}, options.BufferSize),
+		output:             make(chan interface{}, options.BufferSize),
+		chunkSize:          options.ChunkSize,
+		chunks:             ring.New(options.ChunkCount),
+		availableChunks:    make(chan *Chunk, options.ChunkCount),
+		handler:            options.Handler,
 	}
 	/*
 		pcf := &ParallelChunkedFlow{
@@ -71,6 +75,8 @@ func (pcf *ParallelChunkedFlow) dataReceiver() {
 		case data := <-pcf.incoming:
 			// Process input data
 			pcf.dispatch(data)
+		case <-pcf.closedDataReceiver:
+			return
 		}
 	}
 }
@@ -78,17 +84,32 @@ func (pcf *ParallelChunkedFlow) dataReceiver() {
 func (pcf *ParallelChunkedFlow) dataExporter() {
 
 	for cursor := pcf.cursor; ; cursor = cursor.Next() {
+
+		select {
+		case <-pcf.closedDataExporter:
+			return
+		default:
+			break
+		}
 		//		log.Warn("entering ", cursor.Value.(*Chunk).id)
 		//		log.Warn(cursor.Value.(*Chunk).len())
 
 		pcf.cursor = cursor
 		chunk := cursor.Value.(*Chunk)
 
-		pcf.output <- chunk.pop()
+		select {
+		case pcf.output <- chunk.pop():
+		case <-pcf.closedDataExporter:
+			return
+		}
 		//		log.Info("<<")
 
 		for chunk == pcf.currentChunk {
-			pcf.output <- chunk.pop()
+			select {
+			case pcf.output <- chunk.pop():
+			case <-pcf.closedDataExporter:
+				return
+			}
 			//			log.Info("<<")
 		}
 
@@ -135,4 +156,14 @@ func (pcf *ParallelChunkedFlow) Push(data interface{}) error {
 // Output will return a channel for receive proccessed data from flow
 func (pcf *ParallelChunkedFlow) Output() chan interface{} {
 	return pcf.output
+}
+
+// Close all goroutines
+func (pcf *ParallelChunkedFlow) Close() {
+	pcf.closedDataReceiver <- struct{}{}
+	pcf.closedDataExporter <- struct{}{}
+
+	pcf.chunks.Do(func(value interface{}) {
+		value.(*Chunk).close()
+	})
 }
