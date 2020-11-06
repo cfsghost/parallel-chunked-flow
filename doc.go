@@ -1,5 +1,5 @@
 /*
-Package parallel chunked flow provides the ability to craete parallel pipeline for sequential data.
+Package parallel_chunked_flow provides the ability to craete parallel pipeline for sequential data.
 Here is example to create a flow:
 	// Create Options object
 	options := &parallel_chunked_flow.Options{
