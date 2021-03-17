@@ -28,6 +28,10 @@ func (chunk *Chunk) Initialize() {
 	go chunk.receiver()
 }
 
+func (chunk *Chunk) start(size int) {
+	chunk.output = make(chan interface{}, size)
+}
+
 func (chunk *Chunk) close() {
 	chunk.closed <- struct{}{}
 }
@@ -41,7 +45,7 @@ func (chunk *Chunk) receiver() {
 			// Process data from queue of chunk
 			chunk.handle(data)
 		case <-chunk.closed:
-			return
+			close(chunk.output)
 		}
 	}
 }
