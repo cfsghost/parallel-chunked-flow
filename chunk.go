@@ -14,7 +14,7 @@ type Chunk struct {
 	counter    uint64
 	bufferSize int
 	Handler    func(interface{}, chan interface{})
-	isCloseing bool
+	isClosing  bool
 }
 
 func NewChunk(size int) *Chunk {
@@ -24,7 +24,7 @@ func NewChunk(size int) *Chunk {
 		output:     make(chan interface{}, size),
 		closed:     make(chan struct{}),
 		counter:    0,
-		isCloseing: false,
+		isClosing:  false,
 	}
 }
 
@@ -38,10 +38,10 @@ func (chunk *Chunk) start(size int) {
 
 func (chunk *Chunk) close() error {
 
-	if chunk.inCloseing {
+	if chunk.isClosing {
 		return errors.New("In closeing")
 	}
-	chunk.inCloseing = true
+	chunk.isClosing = true
 
 RETRY:
 	if !chunk.isEmpty() {
@@ -55,7 +55,7 @@ RETRY:
 	}
 
 	chunk.closed <- struct{}{}
-	chunk.inCloseing = false
+	chunk.isClosing = false
 
 	return nil
 }
