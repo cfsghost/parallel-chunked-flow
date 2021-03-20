@@ -113,10 +113,12 @@ func (pcf *ParallelChunkedFlow) dataExporter() {
 			//			log.Info("<<")
 		}
 
-		for !chunk.isEmpty() {
-			pcf.output <- chunk.pop()
-			//			log.Info("<<")
-		}
+		/*
+			for !chunk.isEmpty() {
+				pcf.output <- chunk.pop()
+				//			log.Info("<<")
+			}
+		*/
 
 		// No more data in this chunk
 		cursor.Value.(*Chunk).start(pcf.chunkSize)
@@ -141,7 +143,10 @@ func (pcf *ParallelChunkedFlow) dispatch(data interface{}) {
 
 		//		log.Info("full ", pcf.currentChunk.id)
 
-		pcf.currentChunk.close()
+		err := pcf.currentChunk.close()
+		if err != nil {
+			continue
+		}
 
 		// Getting available chunk
 		pcf.currentChunk = <-pcf.availableChunks

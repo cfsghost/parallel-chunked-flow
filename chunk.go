@@ -1,7 +1,9 @@
 package parallel_chunked_flow
 
 import (
+	"errors"
 	"sync/atomic"
+	"time"
 )
 
 type Chunk struct {
@@ -12,6 +14,7 @@ type Chunk struct {
 	counter    uint64
 	bufferSize int
 	Handler    func(interface{}, chan interface{})
+	isCloseing bool
 }
 
 func NewChunk(size int) *Chunk {
@@ -21,6 +24,7 @@ func NewChunk(size int) *Chunk {
 		output:     make(chan interface{}, size),
 		closed:     make(chan struct{}),
 		counter:    0,
+		isCloseing: false,
 	}
 }
 
@@ -32,8 +36,28 @@ func (chunk *Chunk) start(size int) {
 	chunk.output = make(chan interface{}, size)
 }
 
-func (chunk *Chunk) close() {
+func (chunk *Chunk) close() error {
+
+	if chunk.inCloseing {
+		return errors.New("In closeing")
+	}
+	chunk.inCloseing = true
+
+RETRY:
+	if !chunk.isEmpty() {
+		// delay
+		timer := time.NewTimer(500 * time.Millisecond)
+		<-timer.C
+
+		// retry check chunk length
+		goto RETRY
+		//return chunk.close()
+	}
+
 	chunk.closed <- struct{}{}
+	chunk.inCloseing = false
+
+	return nil
 }
 
 func (chunk *Chunk) receiver() {
