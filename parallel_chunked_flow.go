@@ -16,7 +16,7 @@ type ParallelChunkedFlow struct {
 	availableChunks chan *Chunk
 	currentChunk    *Chunk
 
-	handler func(interface{}, chan interface{})
+	handler func(interface{}, chan interface{}, func())
 }
 
 // NewParallelChunckedFlow creates a new parallel chunked flow
@@ -63,6 +63,10 @@ func (pcf *ParallelChunkedFlow) initialize() error {
 		pcf.availableChunks <- chunk
 	}
 
+	// Set first chunk as default
+	pcf.currentChunk = <-pcf.availableChunks
+	pcf.currentChunk.activate()
+
 	go pcf.dataReceiver()
 	go pcf.dataExporter()
 
@@ -84,41 +88,32 @@ func (pcf *ParallelChunkedFlow) dataReceiver() {
 func (pcf *ParallelChunkedFlow) dataExporter() {
 
 	for cursor := pcf.cursor; ; cursor = cursor.Next() {
-
-		select {
-		case <-pcf.closedDataExporter:
-			return
-		default:
-			break
-		}
 		//		log.Warn("entering ", cursor.Value.(*Chunk).id)
 		//		log.Warn(cursor.Value.(*Chunk).len())
 
 		pcf.cursor = cursor
 		chunk := cursor.Value.(*Chunk)
 
-		select {
-		case pcf.output <- chunk.pop():
-		case <-pcf.closedDataExporter:
-			return
-		}
-		//		log.Info("<<")
+		// Waiting for data from chunk
+		for {
 
-		for chunk == pcf.currentChunk {
+			// This chunk is empty and not activated, so switching to the next
+			if !chunk.isActive && chunk.isEmpty() {
+				break
+			}
+
 			select {
-			case pcf.output <- chunk.pop():
+			case data := <-chunk.Output():
+				pcf.output <- data
+
+				// update counter
+				chunk.unref()
 			case <-pcf.closedDataExporter:
 				return
 			}
-			//			log.Info("<<")
 		}
 
-		for !chunk.isEmpty() {
-			pcf.output <- chunk.pop()
-			//			log.Info("<<")
-		}
-
-		// No more data in this chunk
+		// No more data in this chunk so release it
 		pcf.availableChunks <- cursor.Value.(*Chunk)
 
 		//		log.Warn("done ", cursor.Value.(*Chunk).id)
@@ -127,10 +122,6 @@ func (pcf *ParallelChunkedFlow) dataExporter() {
 }
 
 func (pcf *ParallelChunkedFlow) dispatch(data interface{}) {
-
-	if pcf.currentChunk == nil {
-		pcf.currentChunk = <-pcf.availableChunks
-	}
 
 	// Split data into equally sized chunks
 	for {
@@ -141,7 +132,10 @@ func (pcf *ParallelChunkedFlow) dispatch(data interface{}) {
 		//		log.Info("full ", pcf.currentChunk.id)
 
 		// Getting available chunk
+		previousChunk := pcf.currentChunk
 		pcf.currentChunk = <-pcf.availableChunks
+		pcf.currentChunk.activate()
+		previousChunk.deactivate()
 
 		//		log.Error("next ", pcf.currentChunk.id)
 	}

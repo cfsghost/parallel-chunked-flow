@@ -11,7 +11,9 @@ type Chunk struct {
 	closed     chan struct{}
 	counter    uint64
 	bufferSize int
-	Handler    func(interface{}, chan interface{})
+	isClosed   bool
+	isActive   bool
+	Handler    func(interface{}, chan interface{}, func())
 }
 
 func NewChunk(size int) *Chunk {
@@ -21,6 +23,8 @@ func NewChunk(size int) *Chunk {
 		output:     make(chan interface{}, size),
 		closed:     make(chan struct{}),
 		counter:    0,
+		isClosed:   false,
+		isActive:   false,
 	}
 }
 
@@ -28,7 +32,32 @@ func (chunk *Chunk) Initialize() {
 	go chunk.receiver()
 }
 
+func (chunk *Chunk) Output() chan interface{} {
+	return chunk.output
+}
+
+func (chunk *Chunk) resetOutput() {
+
+	// Chunk is closed already. Do nothing.
+	if chunk.isClosed {
+		return
+	}
+
+	close(chunk.output)
+	chunk.output = make(chan interface{}, chunk.bufferSize)
+}
+
+func (chunk *Chunk) activate() {
+	chunk.isActive = true
+}
+
+func (chunk *Chunk) deactivate() {
+	chunk.isActive = false
+	chunk.checkStatus()
+}
+
 func (chunk *Chunk) close() {
+	chunk.isClosed = true
 	chunk.closed <- struct{}{}
 }
 
@@ -47,11 +76,12 @@ func (chunk *Chunk) receiver() {
 }
 
 func (chunk *Chunk) handle(data interface{}) {
-	chunk.Handler(data, chunk.output)
+	chunk.Handler(data, chunk.output, chunk.reject)
 }
 
 func (chunk *Chunk) push(data interface{}) bool {
 
+	// full
 	if chunk.len() == uint64(chunk.bufferSize) {
 		return false
 	}
@@ -69,9 +99,27 @@ func (chunk *Chunk) push(data interface{}) bool {
 func (chunk *Chunk) pop() interface{} {
 
 	data := <-chunk.output
-	atomic.AddUint64((*uint64)(&chunk.counter), ^uint64(0))
+	chunk.unref()
 
 	return data
+}
+
+func (chunk *Chunk) reject() {
+	chunk.unref()
+}
+
+func (chunk *Chunk) unref() uint64 {
+	count := atomic.AddUint64((*uint64)(&chunk.counter), ^uint64(0))
+	if count == 0 && !chunk.isActive {
+		chunk.resetOutput()
+	}
+	return count
+}
+
+func (chunk *Chunk) checkStatus() {
+	if chunk.isEmpty() && !chunk.isActive {
+		chunk.resetOutput()
+	}
 }
 
 func (chunk *Chunk) len() uint64 {

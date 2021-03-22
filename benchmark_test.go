@@ -1,13 +1,13 @@
 package parallel_chunked_flow
 
 import (
-	"testing"
 	"encoding/json"
+	"testing"
 )
 
 type Payload struct {
-	String string `json:"string,omitempty"`
-	Number float64 `json:"number,omitempty"`
+	String   string   `json:"string,omitempty"`
+	Number   float64  `json:"number,omitempty"`
 	Elements []string `json:"elements,omitempty"`
 }
 
@@ -32,8 +32,8 @@ func BenchmarkBasic(b *testing.B) {
 	b.Run("Large", func(b *testing.B) {
 
 		data := Payload{
-			String: "string",
-			Number: 99999,
+			String:   "string",
+			Number:   99999,
 			Elements: make([]string, 0, 1000),
 		}
 
@@ -56,14 +56,14 @@ func BenchmarkChunkedFlowWithLowChunkCount(b *testing.B) {
 
 	// Create Options object
 	options := &Options{
-			BufferSize: 10240000,
-			ChunkSize:  1024,
-			ChunkCount: 128,
-			Handler: func(data interface{}, output chan interface{}) {
-				var result map[string]interface{}
-				json.Unmarshal(data.([]byte), &result)
-				output <- result
-			},
+		BufferSize: 10240000,
+		ChunkSize:  1024,
+		ChunkCount: 128,
+		Handler: func(data interface{}, output chan interface{}, reject func()) {
+			var result map[string]interface{}
+			json.Unmarshal(data.([]byte), &result)
+			output <- result
+		},
 	}
 
 	// Create flow with options
@@ -94,8 +94,8 @@ func BenchmarkChunkedFlowWithLowChunkCount(b *testing.B) {
 	b.Run("Large", func(b *testing.B) {
 		// Prepare json
 		data := Payload{
-			String: "string",
-			Number: 99999,
+			String:   "string",
+			Number:   99999,
 			Elements: make([]string, 0, 1000),
 		}
 
@@ -125,14 +125,14 @@ func BenchmarkChunkedFlowWithHighChunkCount(b *testing.B) {
 
 	// Create Options object
 	options := &Options{
-			BufferSize: 10240000,
-			ChunkSize:  1024,
-			ChunkCount: 512,
-			Handler: func(data interface{}, output chan interface{}) {
-				var result map[string]interface{}
-				json.Unmarshal(data.([]byte), &result)
-				output <- result
-			},
+		BufferSize: 10240000,
+		ChunkSize:  1024,
+		ChunkCount: 128,
+		Handler: func(data interface{}, output chan interface{}, reject func()) {
+			var result map[string]interface{}
+			json.Unmarshal(data.([]byte), &result)
+			output <- result
+		},
 	}
 
 	// Create flow with options
@@ -163,8 +163,8 @@ func BenchmarkChunkedFlowWithHighChunkCount(b *testing.B) {
 	b.Run("Large", func(b *testing.B) {
 		// Prepare json
 		data := Payload{
-			String: "string",
-			Number: 99999,
+			String:   "string",
+			Number:   99999,
 			Elements: make([]string, 0, 1000),
 		}
 
