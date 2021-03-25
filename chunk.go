@@ -1,30 +1,36 @@
 package parallel_chunked_flow
 
 import (
+	"sync"
 	"sync/atomic"
 )
 
 type Chunk struct {
-	id         int
-	incoming   chan interface{}
-	output     chan interface{}
-	closed     chan struct{}
-	counter    uint64
-	bufferSize int
-	isClosed   bool
-	isActive   bool
-	Handler    func(interface{}, chan interface{}, func())
+	id           int
+	incoming     chan interface{}
+	output       chan interface{}
+	closed       chan struct{}
+	suspended    chan struct{}
+	pendingCount uint64
+	outputCount  uint64
+	bufferSize   int
+	isClosed     bool
+	isActive     bool
+	Handler      func(interface{}, func(interface{}))
+	mutex        sync.Mutex
 }
 
 func NewChunk(size int) *Chunk {
 	return &Chunk{
-		bufferSize: size,
-		incoming:   make(chan interface{}, size),
-		output:     make(chan interface{}, size),
-		closed:     make(chan struct{}),
-		counter:    0,
-		isClosed:   false,
-		isActive:   false,
+		bufferSize:   size,
+		incoming:     make(chan interface{}, size),
+		output:       make(chan interface{}, size),
+		closed:       make(chan struct{}),
+		suspended:    make(chan struct{}),
+		pendingCount: 0,
+		outputCount:  0,
+		isClosed:     false,
+		isActive:     false,
 	}
 }
 
@@ -36,27 +42,23 @@ func (chunk *Chunk) Output() chan interface{} {
 	return chunk.output
 }
 
-func (chunk *Chunk) resetOutput() {
-
-	// Chunk is closed already. Do nothing.
-	if chunk.isClosed {
-		return
-	}
-
-	close(chunk.output)
-	chunk.output = make(chan interface{}, chunk.bufferSize)
-}
-
 func (chunk *Chunk) activate() {
 	chunk.isActive = true
 }
 
 func (chunk *Chunk) deactivate() {
 	chunk.isActive = false
-	chunk.checkStatus()
 }
 
 func (chunk *Chunk) close() {
+
+	chunk.mutex.Lock()
+	defer chunk.mutex.Unlock()
+
+	if chunk.isClosed {
+		return
+	}
+
 	chunk.isClosed = true
 	chunk.closed <- struct{}{}
 }
@@ -70,65 +72,70 @@ func (chunk *Chunk) receiver() {
 			// Process data from queue of chunk
 			chunk.handle(data)
 		case <-chunk.closed:
+			close(chunk.output)
 			return
 		}
 	}
 }
 
 func (chunk *Chunk) handle(data interface{}) {
-	chunk.Handler(data, chunk.output, chunk.reject)
+
+	if chunk.isClosed {
+		return
+	}
+
+	chunk.Handler(data, chunk.publish)
+
+	// update counter
+	atomic.AddUint64((*uint64)(&chunk.pendingCount), ^uint64(0))
 }
 
 func (chunk *Chunk) push(data interface{}) bool {
 
+	if chunk.isClosed {
+		return false
+	}
+
 	// full
-	if chunk.len() == uint64(chunk.bufferSize) {
+	if chunk.isFull() {
 		return false
 	}
 
-	select {
-	case chunk.incoming <- data:
-		atomic.AddUint64((*uint64)(&chunk.counter), 1)
-		return true
-	default:
-		// full
+	atomic.AddUint64((*uint64)(&chunk.pendingCount), 1)
+	chunk.incoming <- data
+
+	return true
+}
+
+func (chunk *Chunk) publish(data interface{}) {
+
+	if chunk.isClosed {
+		return
+	}
+
+	atomic.AddUint64((*uint64)(&chunk.outputCount), 1)
+	chunk.output <- data
+}
+
+func (chunk *Chunk) ack() {
+	atomic.AddUint64((*uint64)(&chunk.outputCount), ^uint64(0))
+}
+
+func (chunk *Chunk) isFull() bool {
+	pendingCount := atomic.LoadUint64(&chunk.pendingCount)
+	if pendingCount < uint64(chunk.bufferSize) {
 		return false
 	}
-}
 
-func (chunk *Chunk) pop() interface{} {
-
-	data := <-chunk.output
-	chunk.unref()
-
-	return data
-}
-
-func (chunk *Chunk) reject() {
-	chunk.unref()
-}
-
-func (chunk *Chunk) unref() uint64 {
-	count := atomic.AddUint64((*uint64)(&chunk.counter), ^uint64(0))
-	if count == 0 && !chunk.isActive {
-		chunk.resetOutput()
-	}
-	return count
-}
-
-func (chunk *Chunk) checkStatus() {
-	if chunk.isEmpty() && !chunk.isActive {
-		chunk.resetOutput()
-	}
-}
-
-func (chunk *Chunk) len() uint64 {
-	return atomic.LoadUint64(&chunk.counter)
+	return true
 }
 
 func (chunk *Chunk) isEmpty() bool {
 
-	if chunk.len() == 0 {
+	pendingCount := atomic.LoadUint64(&chunk.pendingCount)
+	outputCount := atomic.LoadUint64(&chunk.outputCount)
+
+	if pendingCount == 0 && outputCount == 0 {
 		return true
 	}
 

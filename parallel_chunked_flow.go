@@ -2,6 +2,7 @@ package parallel_chunked_flow
 
 import (
 	"container/ring"
+	"errors"
 )
 
 type ParallelChunkedFlow struct {
@@ -12,11 +13,12 @@ type ParallelChunkedFlow struct {
 	chunkSize          int
 	chunks             *ring.Ring
 	cursor             *ring.Ring
+	isClosed           bool
 
 	availableChunks chan *Chunk
 	currentChunk    *Chunk
 
-	handler func(interface{}, chan interface{}, func())
+	handler func(interface{}, func(interface{}))
 }
 
 // NewParallelChunckedFlow creates a new parallel chunked flow
@@ -31,6 +33,7 @@ func NewParallelChunkedFlow(options *Options) *ParallelChunkedFlow {
 		chunks:             ring.New(options.ChunkCount),
 		availableChunks:    make(chan *Chunk, options.ChunkCount),
 		handler:            options.Handler,
+		isClosed:           true,
 	}
 	/*
 		pcf := &ParallelChunkedFlow{
@@ -70,6 +73,8 @@ func (pcf *ParallelChunkedFlow) initialize() error {
 	go pcf.dataReceiver()
 	go pcf.dataExporter()
 
+	pcf.isClosed = false
+
 	return nil
 }
 
@@ -107,9 +112,11 @@ func (pcf *ParallelChunkedFlow) dataExporter() {
 				pcf.output <- data
 
 				// update counter
-				chunk.unref()
+				chunk.ack()
 			case <-pcf.closedDataExporter:
 				return
+			default:
+				continue
 			}
 		}
 
@@ -122,6 +129,10 @@ func (pcf *ParallelChunkedFlow) dataExporter() {
 }
 
 func (pcf *ParallelChunkedFlow) dispatch(data interface{}) {
+
+	if pcf.isClosed {
+		return
+	}
 
 	// Split data into equally sized chunks
 	for {
@@ -143,8 +154,17 @@ func (pcf *ParallelChunkedFlow) dispatch(data interface{}) {
 
 // Push will put data to the flow
 func (pcf *ParallelChunkedFlow) Push(data interface{}) error {
-	pcf.incoming <- data
-	return nil
+
+	if pcf.isClosed {
+		return errors.New("Flow is closed")
+	}
+
+	select {
+	case pcf.incoming <- data:
+		return nil
+	default:
+		return errors.New("Buffer is full")
+	}
 }
 
 // Output will return a channel for receive proccessed data from flow
@@ -154,6 +174,11 @@ func (pcf *ParallelChunkedFlow) Output() chan interface{} {
 
 // Close all goroutines
 func (pcf *ParallelChunkedFlow) Close() {
+
+	if pcf.isClosed {
+		return
+	}
+
 	pcf.closedDataReceiver <- struct{}{}
 	pcf.closedDataExporter <- struct{}{}
 

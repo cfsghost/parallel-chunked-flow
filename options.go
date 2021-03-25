@@ -5,7 +5,7 @@ type Options struct {
 	BufferSize int
 	ChunkSize  int
 	ChunkCount int
-	Handler    func(interface{}, chan interface{}, func())
+	Handler    func(interface{}, func(interface{}))
 }
 
 // NewOptions creates a Options object.
@@ -14,9 +14,8 @@ func NewOptions() *Options {
 		BufferSize: 102400,
 		ChunkSize:  1024,
 		ChunkCount: 128,
-		Handler: func(data interface{}, output chan interface{}, reject func()) {
+		Handler: func(data interface{}, output func(interface{})) {
 			// Dummy
-			reject()
 		},
 	}
 }

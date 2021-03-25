@@ -59,39 +59,43 @@ func BenchmarkChunkedFlowWithLowChunkCount(b *testing.B) {
 		BufferSize: 10240000,
 		ChunkSize:  1024,
 		ChunkCount: 128,
-		Handler: func(data interface{}, output chan interface{}, reject func()) {
+		Handler: func(data interface{}, output func(interface{})) {
 			var result map[string]interface{}
 			json.Unmarshal(data.([]byte), &result)
-			output <- result
+			output(result)
 		},
 	}
 
-	// Create flow with options
-	flow := NewParallelChunkedFlow(options)
-
 	b.Run("Small", func(b *testing.B) {
+
+		// Create flow with options
+		flow := NewParallelChunkedFlow(options)
+
 		// Prepare json
 		payload, _ := json.Marshal(&Payload{
 			String: "string",
 			Number: 99999,
 		})
 
-		b.RunParallel(func(b *testing.PB) {
-
-			for b.Next() {
+		b.ResetTimer()
+		go func() {
+			for i := 0; i < b.N; i++ {
 				flow.Push(payload)
 			}
-		})
+		}()
 
-		b.RunParallel(func(b *testing.PB) {
+		for i := 0; i < b.N; i++ {
+			<-flow.Output()
+		}
 
-			for b.Next() {
-				<-flow.Output()
-			}
-		})
+		flow.Close()
 	})
 
 	b.Run("Large", func(b *testing.B) {
+
+		// Create flow with options
+		flow := NewParallelChunkedFlow(options)
+
 		// Prepare json
 		data := Payload{
 			String:   "string",
@@ -105,19 +109,18 @@ func BenchmarkChunkedFlowWithLowChunkCount(b *testing.B) {
 
 		payload, _ := json.Marshal(&data)
 
-		b.RunParallel(func(b *testing.PB) {
-
-			for b.Next() {
+		b.ResetTimer()
+		go func() {
+			for i := 0; i < b.N; i++ {
 				flow.Push(payload)
 			}
-		})
+		}()
 
-		b.RunParallel(func(b *testing.PB) {
+		for i := 0; i < b.N; i++ {
+			<-flow.Output()
+		}
 
-			for b.Next() {
-				<-flow.Output()
-			}
-		})
+		flow.Close()
 	})
 }
 
@@ -128,39 +131,43 @@ func BenchmarkChunkedFlowWithHighChunkCount(b *testing.B) {
 		BufferSize: 10240000,
 		ChunkSize:  1024,
 		ChunkCount: 128,
-		Handler: func(data interface{}, output chan interface{}, reject func()) {
+		Handler: func(data interface{}, output func(interface{})) {
 			var result map[string]interface{}
 			json.Unmarshal(data.([]byte), &result)
-			output <- result
+			output(result)
 		},
 	}
 
-	// Create flow with options
-	flow := NewParallelChunkedFlow(options)
-
 	b.Run("Small", func(b *testing.B) {
+
+		// Create flow with options
+		flow := NewParallelChunkedFlow(options)
+
 		// Prepare json
 		payload, _ := json.Marshal(&Payload{
 			String: "string",
 			Number: 99999,
 		})
 
-		b.RunParallel(func(b *testing.PB) {
-
-			for b.Next() {
+		b.ResetTimer()
+		go func() {
+			for i := 0; i < b.N; i++ {
 				flow.Push(payload)
 			}
-		})
+		}()
 
-		b.RunParallel(func(b *testing.PB) {
+		for i := 0; i < b.N; i++ {
+			<-flow.Output()
+		}
 
-			for b.Next() {
-				<-flow.Output()
-			}
-		})
+		flow.Close()
 	})
 
 	b.Run("Large", func(b *testing.B) {
+
+		// Create flow with options
+		flow := NewParallelChunkedFlow(options)
+
 		// Prepare json
 		data := Payload{
 			String:   "string",
@@ -174,18 +181,17 @@ func BenchmarkChunkedFlowWithHighChunkCount(b *testing.B) {
 
 		payload, _ := json.Marshal(&data)
 
-		b.RunParallel(func(b *testing.PB) {
-
-			for b.Next() {
+		b.ResetTimer()
+		go func() {
+			for i := 0; i < b.N; i++ {
 				flow.Push(payload)
 			}
-		})
+		}()
 
-		b.RunParallel(func(b *testing.PB) {
+		for i := 0; i < b.N; i++ {
+			<-flow.Output()
+		}
 
-			for b.Next() {
-				<-flow.Output()
-			}
-		})
+		flow.Close()
 	})
 }
