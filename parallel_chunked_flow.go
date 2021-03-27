@@ -3,6 +3,7 @@ package parallel_chunked_flow
 import (
 	"container/ring"
 	"errors"
+	"time"
 )
 
 type ParallelChunkedFlow struct {
@@ -115,7 +116,7 @@ func (pcf *ParallelChunkedFlow) dataExporter() {
 				chunk.ack()
 			case <-pcf.closedDataExporter:
 				return
-			default:
+			case <-time.After(time.Second):
 				continue
 			}
 		}
