@@ -87,6 +87,8 @@ func (pcf *ParallelChunkedFlow) dataReceiver() {
 			pcf.dispatch(data)
 		case <-pcf.closedDataReceiver:
 			return
+		case <-time.After(time.Millisecond):
+			continue
 		}
 	}
 }
@@ -104,7 +106,8 @@ func (pcf *ParallelChunkedFlow) dataExporter() {
 		for {
 
 			// This chunk is empty and not activated, so switching to the next
-			if !chunk.isActive && chunk.isEmpty() {
+			//if !chunk.isActive && chunk.isEmpty() {
+			if !chunk.getIsactivateStatus() && chunk.isEmpty() {
 				break
 			}
 
@@ -116,7 +119,7 @@ func (pcf *ParallelChunkedFlow) dataExporter() {
 				chunk.ack()
 			case <-pcf.closedDataExporter:
 				return
-			case <-time.After(time.Second):
+			case <-time.After(time.Millisecond):
 				continue
 			}
 		}

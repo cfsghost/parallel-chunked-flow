@@ -43,11 +43,21 @@ func (chunk *Chunk) Output() chan interface{} {
 }
 
 func (chunk *Chunk) activate() {
+	chunk.mutex.Lock()
+	defer chunk.mutex.Unlock()
 	chunk.isActive = true
 }
 
 func (chunk *Chunk) deactivate() {
+	chunk.mutex.Lock()
+	defer chunk.mutex.Unlock()
 	chunk.isActive = false
+}
+
+func (chunk *Chunk) getIsactivateStatus() bool {
+	chunk.mutex.Lock()
+	defer chunk.mutex.Unlock()
+	return chunk.isActive
 }
 
 func (chunk *Chunk) close() {
@@ -68,7 +78,6 @@ func (chunk *Chunk) receiver() {
 	for {
 		select {
 		case data := <-chunk.incoming:
-
 			// Process data from queue of chunk
 			chunk.handle(data)
 		case <-chunk.closed:
